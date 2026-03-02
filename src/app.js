@@ -19,7 +19,13 @@ export const createApp = () => {
   const app = express()
 
   // Global Middleware
-  app.use(cors())
+  app.use(cors({
+    origin: [
+      "http://localhost:5173",
+      "https://aurova-frontend.vercel.app"
+    ],
+    credentials: true
+  }))
   app.use(express.json())
   app.use(apiLimiter)
   app.use(pinoHttp({ logger: pinoLogger }))
