@@ -7,36 +7,36 @@ import { deviceAuth } from '../middleware/deviceAuth.js'
 const router = express.Router()
 
 // Register Device (Admin Protected)
-router.post('/register', async (req, res) => {
+router.post('/register', adminAuth, async (req, res) => {
   try {
-    const { machineId, machineName, groupName, ipAddress, firmwareVersion } = req.body
+    const { machineId, machineName, firmwareVersion } = req.body
 
-    if (!machineId || !machineName || !firmwareVersion)
-      return res.status(400).json({ message: 'Required fields missing' })
+    const groupName = "AUROVA"
+    const ipAddress = "0.0.0.0"
 
     const deviceToken = crypto.randomBytes(32).toString('hex')
 
-    await query(`
-      INSERT INTO devices(machine_id, machine_name, group_name, ip_address, firmware_version, device_token)
-      VALUES($1,$2,$3,$4,$5,$6)
-      ON CONFLICT(machine_id) DO NOTHING
-    `, [machineId, machineName, groupName, ipAddress, firmwareVersion, deviceToken])
-
     const { rows } = await query(
-      `SELECT * FROM devices WHERE machine_id=$1`,
-      [machineId]
+      `INSERT INTO devices
+       (machine_id, machine_name, group_name, ip_address, firmware_version, status, registered_at, device_token)
+       VALUES ($1,$2,$3,$4,$5,'offline',NOW(),$6)
+       RETURNING *`,
+      [machineId, machineName, groupName, ipAddress, firmwareVersion, deviceToken]
     )
 
     getIO().emit('deviceUpdated', rows[0])
 
     res.json({
       success: true,
-      device: rows[0]
+      device: {
+        machine_id: rows[0].machine_id,
+        device_token: deviceToken
+      }
     })
 
   } catch (err) {
     console.error(err)
-    res.status(500).json({ message: 'Internal server error' })
+    res.status(500).json({ message: "Error registering device" })
   }
 })
 
@@ -45,35 +45,49 @@ router.post('/heartbeat', deviceAuth, async (req, res) => {
   try {
     const device = req.device
 
+    // 🔥 Detect real client IP (Railway safe)
+    const clientIp =
+      req.headers['x-forwarded-for']?.split(',')[0] ||
+      req.socket.remoteAddress ||
+      "0.0.0.0"
+
     // 1️⃣ Get current status
     const { rows: currentRows } = await query(
       `SELECT status FROM devices WHERE machine_id=$1`,
       [device.machine_id]
     )
 
-    const previousStatus = currentRows[0]?.status
+    if (!currentRows.length) {
+      return res.status(404).json({ message: "Device not found" })
+    }
 
-    // 2️⃣ Update heartbeat
-    const { rows } = await query(`
+    const previousStatus = currentRows[0].status
+
+    // 2️⃣ Update heartbeat + IP
+    const { rows } = await query(
+      `
       UPDATE devices
-      SET last_seen=NOW(),
-          status='online'
-      WHERE machine_id=$1
+      SET last_seen = NOW(),
+          status = 'online',
+          ip_address = $2
+      WHERE machine_id = $1
       RETURNING *
-    `, [device.machine_id])
+      `,
+      [device.machine_id, clientIp]
+    )
 
     const updatedDevice = rows[0]
 
-    // 3️⃣ Emit ONLY if status changed
+    // 3️⃣ Emit only if status changed (scalable)
     if (previousStatus === 'offline') {
       getIO().emit('deviceUpdated', updatedDevice)
-      console.log(`Device ${device.machine_id} came ONLINE`)
+      console.log(`⚡ Device ${device.machine_id} came ONLINE`)
     }
 
     res.json({ success: true })
 
   } catch (err) {
-    console.error(err)
+    console.error("Heartbeat error:", err)
     res.status(500).json({ message: 'Internal server error' })
   }
 })
