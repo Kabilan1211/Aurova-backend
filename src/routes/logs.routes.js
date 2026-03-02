@@ -1,7 +1,7 @@
 import express from 'express'
 import { query } from '../config/db.js'
 import { deviceAuth } from '../middleware/deviceAuth.js'
-import adminAuth from '../middleware/adminAuth.js'
+import { adminAuth } from '../middleware/adminAuth.js'
 import { getIO } from '../socket/socket.js'
 
 const router = express.Router()
