@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { query } from '../config/db.js'
 import { getIO } from '../socket/socket.js'
 import { deviceAuth } from '../middleware/deviceAuth.js'
+import { adminAuth } from '../middleware/adminAuth.js'
 
 const router = express.Router()
 
