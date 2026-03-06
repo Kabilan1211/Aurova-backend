@@ -45,26 +45,32 @@ router.post('/register', adminAuth, async (req, res) => {
 router.post('/heartbeat', deviceAuth, async (req, res) => {
   try {
     const device = req.device
-
     const version = req.body.version
 
-    const { versionRows } = await query(
-      `UPDATE devices
+    // 🔹 Update firmware version
+    const { rows: versionRows } = await query(
+      `
+      UPDATE devices
       SET firmware_version = $1
-      WHERE device_token = $2`,
+      WHERE device_token = $2
+      RETURNING *
+      `,
       [version, device.device_token]
     )
 
-    const Update1 = versionRows[0]
-    getIO().emit('deviceUpdated', Update1)
+    const updatedDevice = versionRows[0]
 
-    // 🔥 Detect real client IP (Railway safe)
+    if (updatedDevice) {
+      getIO().emit('deviceUpdated', updatedDevice)
+    }
+
+    // 🔥 Detect real client IP
     const clientIp =
       req.headers['x-forwarded-for']?.split(',')[0] ||
       req.socket.remoteAddress ||
       "0.0.0.0"
 
-    // 1️⃣ Get current status
+    // 🔹 Get previous status
     const { rows: currentRows } = await query(
       `SELECT status FROM devices WHERE machine_id=$1`,
       [device.machine_id]
@@ -76,7 +82,7 @@ router.post('/heartbeat', deviceAuth, async (req, res) => {
 
     const previousStatus = currentRows[0].status
 
-    // 2️⃣ Update heartbeat + IP
+    // 🔹 Update heartbeat
     const { rows } = await query(
       `
       UPDATE devices
@@ -89,11 +95,11 @@ router.post('/heartbeat', deviceAuth, async (req, res) => {
       [device.machine_id, clientIp]
     )
 
-    const updatedDevice = rows[0]
+    const deviceUpdated = rows[0]
 
-    // 3️⃣ Emit only if status changed (scalable)
+    // 🔹 Emit only if status changed
     if (previousStatus === 'offline') {
-      getIO().emit('deviceUpdated', updatedDevice)
+      getIO().emit('deviceUpdated', deviceUpdated)
       console.log(`⚡ Device ${device.machine_id} came ONLINE`)
     }
 
@@ -104,5 +110,4 @@ router.post('/heartbeat', deviceAuth, async (req, res) => {
     res.status(500).json({ message: 'Internal server error' })
   }
 })
-
 export default router
