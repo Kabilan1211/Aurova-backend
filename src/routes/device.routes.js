@@ -46,6 +46,18 @@ router.post('/heartbeat', deviceAuth, async (req, res) => {
   try {
     const device = req.device
 
+    const version = req.body.version
+
+    const { versionRows } = await query(
+      `UPDATE devices
+      SET firmware_version = $1
+      WHERE device_token = $2`,
+      [version, device.device_token]
+    )
+
+    const Update1 = versionRows[0]
+    getIO().emit('deviceUpdated', Update1)
+
     // 🔥 Detect real client IP (Railway safe)
     const clientIp =
       req.headers['x-forwarded-for']?.split(',')[0] ||

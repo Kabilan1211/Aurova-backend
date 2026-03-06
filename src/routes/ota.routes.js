@@ -43,6 +43,19 @@ router.post('/upload', adminAuth, upload.single('firmware'), async (req, res) =>
   }
 })
 
+// Download firmware (Device)
+router.get('/download/:file', deviceAuth, async(req, res) => {
+  try{
+    
+    const { file } = req.params
+    const fileUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/${process.env.FIRMWARE_BUCKET}/${file}`
+    res.redirect(fileUrl)
+
+  } catch(err){
+    console.error(err)
+    res.status(500).json({ message: 'Internal server error' })
+  }
+})
 
 // Device OTA check
 router.post('/check', deviceAuth, async (req, res) => {
